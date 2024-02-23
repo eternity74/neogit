@@ -1,6 +1,7 @@
 local logger = require("neogit.logger")
 local process = require("neogit.process")
 local util = require("neogit.lib.util")
+local Job = require("plenary.job")
 local Path = require("plenary.path")
 
 local function config(setup)
@@ -971,39 +972,17 @@ local function new_builder(subcommand)
       end
     end,
     call_sync = function(options)
-      local opts = vim.tbl_extend(
-        "keep",
-        (options or {}),
-        { verbose = false, ignore_error = not state.show_popup, hidden = false, trim = true }
-      )
-
       local p = to_process {
         on_error = function(_res)
           return not opts.ignore_error
         end,
       }
-
-      if not p:spawn() then
-        error("Failed to run command")
-        return nil
-      end
-
-      local result = p:wait()
-      assert(result, "Command did not complete")
-
-      handle_new_cmd({
-        cmd = table.concat(p.cmd, " "),
-        stdout = result.stdout,
-        stderr = result.stderr,
-        code = result.code,
-        time = result.time,
-      }, state.show_popup, state.hide_text, opts.hidden)
-
-      if opts.trim then
-        return result:trim()
-      else
-        return result
-      end
+      local job = Job:new {
+        command = p.cmd[1],
+        args = table.getn(p.cmd) > 1 and { unpack(p.cmd, 2) } or {},
+      }
+      local stdout, code = job:sync()
+      return { stdout = stdout, stdout_raw = stdout, stderr = job:stderr_result(), code = code }
     end,
   }, mt_builder)
 end
